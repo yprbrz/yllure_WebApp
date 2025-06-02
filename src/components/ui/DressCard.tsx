@@ -14,13 +14,13 @@ export default function DressCard(props: DressCardProps) {
       <div class="relative overflow-hidden">
         <A href={`/dress/${dress.id}`}>
           <img 
-            src={dress.images[0]} 
+            src={dress.images.split(',')[0]} 
             alt={dress.name} 
             class="w-full h-80 object-cover object-center transition-transform duration-700 group-hover:scale-105"
           />
         </A>
         
-        <Show when={!dress.availability}>
+        <Show when={!dress.available}>
           <div class="absolute top-0 right-0 bg-charcoal text-ivory px-3 py-1 text-sm">
             Unavailable
           </div>
@@ -41,10 +41,10 @@ export default function DressCard(props: DressCardProps) {
         </A>
         
         <div class="flex mt-2 space-x-2">
-          {dress.colors.slice(0, 3).map(color => (
-            <div class="w-4 h-4 rounded-full border border-greige" title={color}></div>
+          {dress.colors.split(',').slice(0, 3).map(color => (
+            <div class="w-4 h-4 rounded-full border border-greige\" title={color}></div>
           ))}
-          <Show when={dress.colors.length > 3}>
+          <Show when={dress.colors.split(',').length > 3}>
             <div class="w-4 h-4 rounded-full border border-greige flex items-center justify-center text-xs">+</div>
           </Show>
         </div>

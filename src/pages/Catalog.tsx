@@ -1,46 +1,48 @@
-import { createSignal, createEffect, For, Show } from 'solid-js';
-import { dresses, Dress } from '../data/dresses';
+import { createResource, createSignal, createEffect, For, Show } from 'solid-js';
+import { getAllDresses } from '../data/dresses';
 import DressCard from '../components/ui/DressCard';
+import type { Dress } from '@prisma/client';
+
+interface Filters {
+  colors: string[];
+  sizes: string[];
+  availability: boolean;
+  category: string;
+}
 
 export default function Catalog() {
-  const [filteredDresses, setFilteredDresses] = createSignal<Dress[]>(dresses);
-  const [filters, setFilters] = createSignal({
-    colors: [] as string[],
-    sizes: [] as string[],
+  const [dresses] = createResource(getAllDresses);
+  const [filteredDresses, setFilteredDresses] = createSignal<Dress[]>([]);
+  const [filters, setFilters] = createSignal<Filters>({
+    colors: [],
+    sizes: [],
     availability: false,
     category: ''
   });
   
-  // Aggregate all unique colors and sizes
-  const allColors = [...new Set(dresses.flatMap(dress => dress.colors))];
-  const allSizes = [...new Set(dresses.flatMap(dress => dress.sizes))].sort((a, b) => parseInt(a) - parseInt(b));
-  const allCategories = [...new Set(dresses.map(dress => dress.category))];
-  
   // Apply filters
   createEffect(() => {
-    let results = [...dresses];
+    if (!dresses()) return;
+    
+    let results = [...dresses()];
     const currentFilters = filters();
     
-    // Filter by colors
     if (currentFilters.colors.length > 0) {
       results = results.filter(dress => 
-        dress.colors.some(color => currentFilters.colors.includes(color))
+        dress.colors.split(',').some(color => currentFilters.colors.includes(color.trim()))
       );
     }
     
-    // Filter by sizes
     if (currentFilters.sizes.length > 0) {
       results = results.filter(dress => 
-        dress.sizes.some(size => currentFilters.sizes.includes(size))
+        dress.sizes.split(',').some(size => currentFilters.sizes.includes(size.trim()))
       );
     }
     
-    // Filter by availability
     if (currentFilters.availability) {
-      results = results.filter(dress => dress.availability);
+      results = results.filter(dress => dress.available);
     }
     
-    // Filter by category
     if (currentFilters.category) {
       results = results.filter(dress => dress.category === currentFilters.category);
     }
@@ -48,24 +50,48 @@ export default function Catalog() {
     setFilteredDresses(results);
   });
   
+  // Aggregate all unique colors and sizes
+  const allColors = () => {
+    if (!dresses()) return [];
+    const colorSet = new Set<string>();
+    dresses().forEach(dress => {
+      dress.colors.split(',').forEach(color => colorSet.add(color.trim()));
+    });
+    return Array.from(colorSet);
+  };
+
+  const allSizes = () => {
+    if (!dresses()) return [];
+    const sizeSet = new Set<string>();
+    dresses().forEach(dress => {
+      dress.sizes.split(',').forEach(size => sizeSet.add(size.trim()));
+    });
+    return Array.from(sizeSet).sort((a, b) => parseInt(a) - parseInt(b));
+  };
+
+  const allCategories = () => {
+    if (!dresses()) return [];
+    return [...new Set(dresses().map(dress => dress.category))];
+  };
+  
   // Toggle color filter
   const toggleColorFilter = (color: string) => {
-    setFilters(prev => {
-      const colors = prev.colors.includes(color)
+    setFilters(prev => ({
+      ...prev,
+      colors: prev.colors.includes(color)
         ? prev.colors.filter(c => c !== color)
-        : [...prev.colors, color];
-      return { ...prev, colors };
-    });
+        : [...prev.colors, color]
+    }));
   };
   
   // Toggle size filter
   const toggleSizeFilter = (size: string) => {
-    setFilters(prev => {
-      const sizes = prev.sizes.includes(size)
+    setFilters(prev => ({
+      ...prev,
+      sizes: prev.sizes.includes(size)
         ? prev.sizes.filter(s => s !== size)
-        : [...prev.sizes, size];
-      return { ...prev, sizes };
-    });
+        : [...prev.sizes, size]
+    }));
   };
   
   // Toggle availability filter
@@ -127,7 +153,7 @@ export default function Catalog() {
                     />
                     <label for="category-all" class="text-gray-700">All Categories</label>
                   </div>
-                  <For each={allCategories}>
+                  <For each={allCategories()}>
                     {(category) => (
                       <div class="flex items-center">
                         <input
@@ -149,7 +175,7 @@ export default function Catalog() {
               <div class="mb-6">
                 <h4 class="font-medium text-charcoal mb-3">Colors</h4>
                 <div class="flex flex-wrap gap-2">
-                  <For each={allColors}>
+                  <For each={allColors()}>
                     {(color) => (
                       <button
                         onClick={() => toggleColorFilter(color)}
@@ -170,7 +196,7 @@ export default function Catalog() {
               <div class="mb-6">
                 <h4 class="font-medium text-charcoal mb-3">Sizes</h4>
                 <div class="flex flex-wrap gap-2">
-                  <For each={allSizes}>
+                  <For each={allSizes()}>
                     {(size) => (
                       <button
                         onClick={() => toggleSizeFilter(size)}
@@ -219,14 +245,27 @@ export default function Catalog() {
           {/* Dresses grid */}
           <div class="w-full lg:w-3/4">
             <Show 
-              when={filteredDresses().length > 0} 
-              fallback={<div class="text-center py-12 text-gray-600">No dresses match your selected filters. Try adjusting your criteria.</div>}
+              when={!dresses.loading} 
+              fallback={
+                <div class="flex justify-center">
+                  <div class="w-16 h-16 border-4 border-taupe border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              }
             >
-              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <For each={filteredDresses()}>
-                  {(dress) => <DressCard dress={dress} />}
-                </For>
-              </div>
+              <Show 
+                when={filteredDresses().length > 0} 
+                fallback={
+                  <div class="text-center py-12 text-gray-600">
+                    No dresses match your selected filters. Try adjusting your criteria.
+                  </div>
+                }
+              >
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <For each={filteredDresses()}>
+                    {(dress) => <DressCard dress={dress} />}
+                  </For>
+                </div>
+              </Show>
             </Show>
           </div>
         </div>

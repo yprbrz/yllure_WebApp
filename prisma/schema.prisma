@@ -11,6 +11,7 @@ model User {
   id        String   @id @default(uuid())
   email     String   @unique
   name      String?
+  password  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   rentals   Rental[]
@@ -22,9 +23,9 @@ model Dress {
   description String
   price       Float
   salePrice   Float?
-  images      Json
-  colors      Json
-  sizes       Json
+  images      String
+  colors      String
+  sizes       String
   featured    Boolean  @default(false)
   available   Boolean  @default(true)
   category    String
