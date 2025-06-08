@@ -67,13 +67,30 @@ export async function POST(event: APIEvent) {
 
     // Add item to wishlist
     const wishlistItem = await db.wishlistItem.create({
-      data: {
-        wishlistId: id,
-        dressId: dressId
-      },
-      include: {
-        dress: true
-      }
+    data: {
+      wishlistId: id,
+      dressId: dressId
+    },
+    include: {
+      dress: true
+    }
+    });
+
+    console.log('✅ DATABASE: Successfully created wishlist item:', {
+      wishlistId: id,
+      dressId: dressId,
+      itemId: wishlistItem.id
+    });
+
+    // In your DELETE method, add this logging:
+    await db.wishlistItem.delete({
+      where: { id: wishlistItem.id }
+    });
+
+    console.log('✅ DATABASE: Successfully deleted wishlist item:', {
+      wishlistId: id,
+      dressId: dressId,
+      itemId: wishlistItem.id
     });
 
     return new Response(JSON.stringify({

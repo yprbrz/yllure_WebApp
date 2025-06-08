@@ -1,13 +1,13 @@
+import { createAsyncStore, useSubmissions, action } from "@solidjs/router";
 import { createSignal, onMount, Show, For } from 'solid-js';
-import { A, createAsync, action, revalidate } from '@solidjs/router';
-import DressCard from '~/components/DressCard';
+import { A } from '@solidjs/router';
 import Header from '~/components/Header';
 import Footer from '~/components/Footer';
 import { getUser } from '~/lib/auth/user';
 import { getSession } from '~/lib/auth/session';
 import { db } from '~/lib/db';
 
-// Server function to get available dresses - ADD THIS FOR SSR
+// Server function to get available dresses
 async function getAvailableDresses() {
   "use server";
   
@@ -29,17 +29,13 @@ async function getUserWishlistItems() {
   "use server";
   
   const session = await getSession();
-  if (!session.data.email) {
-    return [];
-  }
+  if (!session?.data?.email) return [];
 
   const user = await db.user.findUnique({
     where: { email: session.data.email },
     include: {
       wishlist: {
-        include: {
-          items: true
-        }
+        include: { items: true }
       }
     }
   });
@@ -47,136 +43,158 @@ async function getUserWishlistItems() {
   return user?.wishlist?.items.map(item => item.dressId) || [];
 }
 
-// Server action to add to wishlist
-const addToWishlistAction = action(async (formData: FormData) => {
+// Server functions for wishlist operations
+async function addToWishlist(formData: FormData) {
   "use server";
   
-  const dressId = formData.get('dressId') as string;
-  
+  const dressId = formData.get('dressId');
+  if (!dressId || typeof dressId !== 'string') {
+    throw new Error('Dress ID required');
+  }
+
   const session = await getSession();
-  if (!session.data.email) {
-    throw new Error('Authentication required');
-  }
+  if (!session?.data?.email) throw new Error('Authentication required');
 
-  const user = await db.user.findUnique({
-    where: { email: session.data.email },
-    include: { wishlist: true }
-  });
-
-  if (!user) {
-    throw new Error('User not found');
-  }
-
-  // Create wishlist if doesn't exist
-  let wishlistId = user.wishlist?.id;
-  if (!wishlistId) {
-    const newWishlist = await db.wishlist.create({
-      data: {
-        userId: user.id,
-        name: 'My Wishlist'
-      }
+  try {
+    // Get or create wishlist
+    const user = await db.user.findUnique({
+      where: { email: session.data.email },
+      include: { wishlist: true }
     });
-    wishlistId = newWishlist.id;
-  }
 
-  // Check if item already exists
-  const existingItem = await db.wishlistItem.findFirst({
-    where: {
-      wishlistId: wishlistId,
-      dressId: dressId
+    if (!user) throw new Error('User not found');
+
+    let wishlist = user.wishlist;
+    if (!wishlist) {
+      wishlist = await db.wishlist.create({
+        data: {
+          name: 'My Wishlist',
+          userId: user.id
+        }
+      });
     }
-  });
 
-  if (!existingItem) {
-    await db.wishlistItem.create({
-      data: {
-        wishlistId: wishlistId,
+    // Check if item already exists
+    const existingItem = await db.wishlistItem.findFirst({
+      where: {
+        wishlistId: wishlist.id,
         dressId: dressId
       }
     });
+
+    if (existingItem) {
+      console.log('Item already in wishlist');
+      return { success: true, message: 'Item already in wishlist' };
+    }
+
+    // Add item to wishlist
+    await db.wishlistItem.create({
+      data: {
+        wishlistId: wishlist.id,
+        dressId: dressId
+      }
+    });
+
+    console.log('✅ Homepage: Successfully added to wishlist:', dressId);
+    return { success: true, message: 'Added to wishlist' };
+    
+  } catch (error) {
+    console.error('❌ Homepage: Error adding to wishlist:', error);
+    throw error;
   }
+}
 
-  // Revalidate all data to refresh the UI
-  revalidate();
-  
-  return await getUserWishlistItems();
-}, 'addToWishlist');
-
-// Server action to remove from wishlist
-const removeFromWishlistAction = action(async (formData: FormData) => {
+async function removeFromWishlist(formData: FormData) {
   "use server";
   
-  const dressId = formData.get('dressId') as string;
-  
-  const session = await getSession();
-  if (!session.data.email) {
-    throw new Error('Authentication required');
+  const dressId = formData.get('dressId');
+  if (!dressId || typeof dressId !== 'string') {
+    throw new Error('Dress ID required');
   }
 
-  const user = await db.user.findUnique({
-    where: { email: session.data.email },
-    include: { wishlist: true }
-  });
+  const session = await getSession();
+  if (!session?.data?.email) throw new Error('Authentication required');
 
-  if (user?.wishlist) {
-    await db.wishlistItem.deleteMany({
+  try {
+    const user = await db.user.findUnique({
+      where: { email: session.data.email },
+      include: { wishlist: true }
+    });
+
+    if (!user?.wishlist) throw new Error('Wishlist not found');
+
+    // Find and delete the wishlist item
+    const wishlistItem = await db.wishlistItem.findFirst({
       where: {
         wishlistId: user.wishlist.id,
         dressId: dressId
       }
     });
-  }
 
-  // Revalidate all data to refresh the UI
-  revalidate();
-  
-  return await getUserWishlistItems();
-}, 'removeFromWishlist');
+    if (!wishlistItem) throw new Error('Item not found in wishlist');
+
+    await db.wishlistItem.delete({
+      where: { id: wishlistItem.id }
+    });
+
+    console.log('✅ Homepage: Successfully removed from wishlist:', dressId);
+    return { success: true, message: 'Removed from wishlist' };
+    
+  } catch (error) {
+    console.error('❌ Homepage: Error removing from wishlist:', error);
+    throw error;
+  }
+}
+
+// Create actions from server functions
+const addToWishlistAction = action(addToWishlist);
+const removeFromWishlistAction = action(removeFromWishlist);
 
 const HomePage = () => {
+  // Signals for UI state
   const [showSlogan, setShowSlogan] = createSignal(false);
   
-  // SSR-compatible data fetching - FIXED
-  const user = createAsync(() => getUser());
-  const availableDresses = createAsync(() => getAvailableDresses());
-  const wishlistItems = createAsync(() => getUserWishlistItems());
+  // Async stores - teacher's pattern
+  const user = createAsyncStore(() => getUser(), { initialValue: null });
+  const availableDresses = createAsyncStore(() => getAvailableDresses(), { initialValue: [] });
+  const wishlistItems = createAsyncStore(() => getUserWishlistItems(), { initialValue: [] });
   
-  // Current wishlist items for UI
-  const currentWishlistItems = () => wishlistItems() || [];
+  // Submissions for optimistic updates - teacher's pattern
+  const addingToWishlist = useSubmissions(addToWishlistAction);
+  const removingFromWishlist = useSubmissions(removeFromWishlistAction);
   
   onMount(() => {
-    // Only animations in onMount - NO DATA FETCHING
     setTimeout(() => setShowSlogan(true), 500);
   });
 
-  const addToWishlist = async (dressId: string) => {
-    if (!user()) {
-      alert('Please sign in to add items to your wishlist');
-      return;
-    }
+  // Filtered wishlist with optimistic updates - teacher's pattern
+  const currentWishlistItems = () => {
+    const serverItems = wishlistItems();
     
-    const formData = new FormData();
-    formData.append('dressId', dressId);
+    // Add optimistically added items
+    const optimisticallyAdded = addingToWishlist
+      .filter(sub => sub.pending)
+      .map(sub => {
+        const dressId = sub.input[0].get('dressId');
+        return typeof dressId === 'string' ? dressId : '';
+      })
+      .filter(id => id !== '');
     
-    try {
-      await addToWishlistAction(formData);
-    } catch (error) {
-      console.error('Error adding to wishlist:', error);
-      alert('Failed to add item to wishlist. Please try again.');
-    }
+    // Remove optimistically removed items
+    const optimisticallyRemoved = removingFromWishlist
+      .filter(sub => sub.pending)
+      .map(sub => {
+        const dressId = sub.input[0].get('dressId');
+        return typeof dressId === 'string' ? dressId : '';
+      })
+      .filter(id => id !== '');
+    
+    // Combine server data with optimistic updates
+    const combined = [...new Set([...serverItems, ...optimisticallyAdded])];
+    return combined.filter(id => !optimisticallyRemoved.includes(id));
   };
 
-  const removeFromWishlist = async (dressId: string) => {
-    const formData = new FormData();
-    formData.append('dressId', dressId);
-    
-    try {
-      await removeFromWishlistAction(formData);
-    } catch (error) {
-      console.error('Error removing from wishlist:', error);
-      alert('Failed to remove item from wishlist. Please try again.');
-    }
-  };
+  const isInWishlist = (dressId: string) => currentWishlistItems().includes(dressId);
   
   return (
     <div class="min-h-screen">
@@ -220,98 +238,103 @@ const HomePage = () => {
               Perfect for any special occasion.
             </p>
             
-            {/* Available Dresses with Suspense */}
-            <Show 
-              when={availableDresses()}
-              fallback={
-                <div class="flex justify-center py-16">
-                  <div class="text-center">
-                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p class="text-gray-500 italic">Loading collection...</p>
-                  </div>
-                </div>
-              }
-            >
-              <Show
-                when={availableDresses() && availableDresses()!.length > 0}
-                fallback={
-                  <div class="text-center py-16">
-                    <p class="text-gray-500">No dresses available at the moment.</p>
-                    <A href="/catalog" class="text-blue-600 hover:text-blue-700 underline mt-2 block">
-                      Browse all dresses
-                    </A>
-                  </div>
-                }
-              >
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  <For each={availableDresses()!.slice(0, 3)}>
-                    {(dress) => (
-                      <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow relative">
-                        <div class="relative">
-                          <img src={dress.frontImage} alt={dress.name} class="w-full h-64 object-cover" />
-                          
-                          {/* Wishlist Heart Button with Form Fallback */}
-                          <Show when={user()}>
-                            <div class="absolute top-3 right-3">
-                              {/* JavaScript-enhanced button */}
-                              <button
-                                onClick={() => {
-                                  const isInWishlist = currentWishlistItems().includes(dress.id);
-                                  if (isInWishlist) {
-                                    removeFromWishlist(dress.id);
-                                  } else {
-                                    addToWishlist(dress.id);
-                                  }
-                                }}
-                                class={`p-2 rounded-full transition-colors ${
-                                  currentWishlistItems().includes(dress.id)
-                                    ? 'bg-red-500 text-white hover:bg-red-600'
-                                    : 'bg-white text-gray-400 hover:text-red-500 hover:bg-gray-50'
-                                }`}
-                                title={currentWishlistItems().includes(dress.id) ? 'Remove from wishlist' : 'Add to wishlist'}
+            {/* Debug Panel */}
+            <Show when={true}>
+              <div class="mb-4 p-4 bg-blue-50 rounded text-sm">
+                <h3 class="font-bold mb-2">🏠 Homepage Debug (Modern SolidJS)</h3>
+                <p>User: {user()?.email || 'Not logged in'}</p>
+                <p>Available Dresses: {availableDresses()?.length || 0}</p>
+                <p>Server Wishlist: {JSON.stringify(wishlistItems())}</p>
+                <p>Current Wishlist: {JSON.stringify(currentWishlistItems())}</p>
+                <p>Adding Submissions: {addingToWishlist.length}</p>
+                <p>Removing Submissions: {removingFromWishlist.length}</p>
+              </div>
+            </Show>
+            
+            {/* Dress Cards */}
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <For each={availableDresses().slice(0, 3)}>
+                {(dress) => (
+                  <div class="group relative bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300">
+                    <div class="relative overflow-hidden rounded-t-lg bg-gray-100 aspect-[2/3]">
+                      <img
+                        src={dress.frontImage}
+                        alt={dress.name}
+                        class="w-full h-full object-cover object-center"
+                        loading="lazy"
+                      />
+                      
+                      {/* Wishlist button with forms */}
+                      <Show when={user()}>
+                        <div class="absolute top-4 right-4">
+                          <Show 
+                            when={isInWishlist(dress.id)}
+                            fallback={
+                              <form method="post" style="display: inline;">
+                                <input type="hidden" name="dressId" value={dress.id} />
+                                <button 
+                                  formAction={addToWishlistAction}
+                                  class="p-2 bg-white/90 rounded-full hover:bg-white transition-colors"
+                                  title="Add to wishlist"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600 hover:text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                                  </svg>
+                                </button>
+                              </form>
+                            }
+                          >
+                            <form method="post" style="display: inline;">
+                              <input type="hidden" name="dressId" value={dress.id} />
+                              <button 
+                                formAction={removeFromWishlistAction}
+                                class="p-2 bg-white/90 rounded-full hover:bg-white transition-colors"
+                                title="Remove from wishlist"
                               >
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill={currentWishlistItems().includes(dress.id) ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-500 fill-red-500" fill="currentColor" viewBox="0 0 24 24" stroke="currentColor">
                                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                                 </svg>
                               </button>
-                              
-                              {/* Fallback forms for no-JS (hidden but functional) */}
-                              <Show when={!currentWishlistItems().includes(dress.id)}>
-                                <form method="post" action={addToWishlistAction} class="hidden">
-                                  <input type="hidden" name="dressId" value={dress.id} />
-                                  <button type="submit" class="sr-only">Add to Wishlist</button>
-                                </form>
-                              </Show>
-                              <Show when={currentWishlistItems().includes(dress.id)}>
-                                <form method="post" action={removeFromWishlistAction} class="hidden">
-                                  <input type="hidden" name="dressId" value={dress.id} />
-                                  <button type="submit" class="sr-only">Remove from Wishlist</button>
-                                </form>
-                              </Show>
-                            </div>
+                            </form>
                           </Show>
                         </div>
-                        
-                        <div class="p-4">
-                          <h3 class="text-lg font-semibold text-gray-900">{dress.name}</h3>
-                          <p class="text-gray-600 mt-1">${dress.price}</p>
-                          <div class="mt-4 flex justify-between">
-                            <A href={`/dresses/${dress.id}`} class="text-indigo-600 hover:text-indigo-800 font-medium">
-                              View Details
-                            </A>
-                            <Show when={!user()}>
-                              <A href="/login" class="text-red-500 hover:text-red-700">
-                                ♡ Sign in to save
-                              </A>
-                            </Show>
-                          </div>
+                      </Show>
+                      
+                      {/* Sign in prompt for non-authenticated users */}
+                      <Show when={!user()}>
+                        <A 
+                          href="/login"
+                          class="absolute top-4 right-4 p-2 bg-white/90 rounded-full hover:bg-white transition-colors"
+                          title="Sign in to add to wishlist"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400 hover:text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                          </svg>
+                        </A>
+                      </Show>
+                    </div>
+                    
+                    <div class="p-4">
+                      <h3 class="font-medium text-gray-900 text-lg leading-tight mb-2">{dress.name}</h3>
+                      <div class="flex justify-between items-center">
+                        <div>
+                          <p class="text-gray-900 font-semibold">${dress.price}</p>
+                          <p class="text-gray-500 text-sm">Size: {dress.size}</p>
                         </div>
+                        <Show when={dress.available}>
+                          <A
+                            href={`/dresses/${dress.id}`}
+                            class="bg-blue-600 text-white py-2 px-4 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200"
+                          >
+                            View Details
+                          </A>
+                        </Show>
                       </div>
-                    )}
-                  </For>
-                </div>
-              </Show>
-            </Show>
+                    </div>
+                  </div>
+                )}
+              </For>
+            </div>
             
             <div class="text-center mt-12">
               <A href="/catalog" class="bg-gray-900 text-white px-8 py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors">
