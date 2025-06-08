@@ -1,27 +1,33 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+@import "tailwindcss";
+
+:root {
+  --background-rgb: 214, 219, 220;
+  --foreground-rgb: 0, 0, 0;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.solid:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-rgb: 0, 0, 0;
+    --foreground-rgb: 255, 255, 255;
+  }
 }
 
-.card {
-  padding: 2em;
+body {
+  background: rgb(var(--background-rgb));
+  color: rgb(var(--foreground-rgb));
 }
 
-.read-the-docs {
-  color: #888;
+/* In your global CSS or component CSS */
+.noscript-fallback {
+  display: none;
+}
+
+/* Show fallback forms when JavaScript is disabled */
+html.no-js .noscript-fallback {
+  display: block;
+}
+
+/* Hide JavaScript-enhanced buttons when JS is disabled */
+html.no-js button[onclick] {
+  display: none !important;
 }
