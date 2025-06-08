@@ -1,5 +1,5 @@
-import { createAsyncStore, useSubmissions, action } from "@solidjs/router";
-import { Show, For } from 'solid-js';
+import { createSignal, createEffect, For, Show, onMount } from 'solid-js';
+import { action, useSubmissions } from "@solidjs/router";
 import { A, redirect } from '@solidjs/router';
 import Header from '~/components/Header';
 import Footer from '~/components/Footer';
@@ -129,19 +129,56 @@ const removeFromWishlistAction = action(removeFromWishlist);
 const clearWishlistAction = action(clearWishlist);
 
 const WishlistPage = () => {
-  // Async stores - teacher's pattern
-  const user = createAsyncStore(() => getUser(), { initialValue: null });
-  const wishlist = createAsyncStore(() => getUserWishlist(), { 
-    initialValue: { id: null, name: 'My Wishlist', items: [] } 
-  });
+  // Manual signals for all data
+  const [user, setUser] = createSignal<any>(null);
+  const [wishlist, setWishlist] = createSignal<any>({ id: null, name: 'My Wishlist', items: [] });
+  const [isLoading, setIsLoading] = createSignal(true);
   
-  // Submissions for optimistic updates - teacher's pattern
+  // Submissions for optimistic updates
   const removingFromWishlist = useSubmissions(removeFromWishlistAction);
   const clearingWishlist = useSubmissions(clearWishlistAction);
 
-  // Filtered wishlist with optimistic updates - teacher's pattern
+  // Load initial data
+  onMount(async () => {
+    try {
+      const [userData, wishlistData] = await Promise.all([
+        getUser(),
+        getUserWishlist()
+      ]);
+      
+      setUser(userData);
+      setWishlist(wishlistData);
+      setIsLoading(false);
+      
+      console.log('🚀 Wishlist: Initial data loaded:', {
+        user: userData?.email,
+        wishlistItems: wishlistData.items.length
+      });
+    } catch (error) {
+      console.error('❌ Wishlist: Error loading data:', error);
+      setIsLoading(false);
+    }
+  });
+
+  // Reload wishlist data after successful submissions
+  createEffect(() => {
+    const completedRemovals = removingFromWishlist.filter(sub => sub.result && !sub.pending);
+    const completedClears = clearingWishlist.filter(sub => sub.result && !sub.pending);
+    
+    if (completedRemovals.length > 0 || completedClears.length > 0) {
+      console.log('🔄 Wishlist: Detected completed submissions, refreshing...');
+      
+      // Refresh wishlist data
+      getUserWishlist().then(data => {
+        setWishlist(data);
+        console.log('✅ Wishlist: Data refreshed:', data.items.length, 'items');
+      }).catch(console.error);
+    }
+  });
+
+  // Filtered wishlist with optimistic updates
   const currentWishlistItems = () => {
-    const serverItems = wishlist().items;
+    const serverItems = wishlist().items || [];
     
     // Remove optimistically removed items
     const optimisticallyRemoved = removingFromWishlist
@@ -157,7 +194,16 @@ const WishlistPage = () => {
     if (isClearing) return [];
     
     // Filter out removed items
-    return serverItems.filter((item: any) => !optimisticallyRemoved.includes(item.id));
+    const result = serverItems.filter((item: any) => !optimisticallyRemoved.includes(item.id));
+    
+    console.log('🔄 Wishlist calculation:', {
+      server: serverItems.length,
+      removing: optimisticallyRemoved,
+      clearing: isClearing,
+      final: result.length
+    });
+    
+    return result;
   };
 
   const wishlistCount = () => currentWishlistItems().length;
@@ -176,22 +222,23 @@ const WishlistPage = () => {
           </p>
           
           {/* Debug Panel */}
-          <Show when={true}>
-            <div class="mb-4 p-4 bg-purple-50 rounded text-sm">
-              <h3 class="font-bold mb-2">💜 Wishlist Debug (Modern SolidJS)</h3>
+          <Show when={false}>
+            <div class="mb-4 p-4 bg-green-50 rounded text-sm">
+              <h3 class="font-bold mb-2">🔧 Fixed Wishlist Debug</h3>
               <p>User: {user()?.email || 'Not logged in'}</p>
               <p>Server Wishlist ID: {wishlist().id || 'None'}</p>
               <p>Server Items: {wishlist().items?.length || 0}</p>
               <p>Current Items: {wishlistCount()}</p>
-              <p>Removing Submissions: {removingFromWishlist.length}</p>
-              <p>Clearing Submissions: {clearingWishlist.length}</p>
+              <p>Removing Submissions: {removingFromWishlist.length} (pending: {removingFromWishlist.filter(s => s.pending).length})</p>
+              <p>Clearing Submissions: {clearingWishlist.length} (pending: {clearingWishlist.filter(s => s.pending).length})</p>
+              <p>Loading: {isLoading() ? 'YES' : 'NO'}</p>
               <p>Item Names: {currentWishlistItems().map((item: any) => item.name).join(', ')}</p>
             </div>
           </Show>
           
           <div class="wishlist-container">
             {/* Loading State */}
-            <Show when={!wishlist().id && wishlist().items.length === 0}>
+            <Show when={isLoading()}>
               <div class="flex justify-center py-16">
                 <div class="text-center">
                   <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -201,7 +248,7 @@ const WishlistPage = () => {
             </Show>
 
             {/* Empty State */}
-            <Show when={wishlist().id !== undefined && wishlistCount() === 0}>
+            <Show when={!isLoading() && wishlistCount() === 0}>
               <div class="text-center py-16 bg-white rounded-lg shadow-sm">
                 <div class="mb-6">
                   <svg class="w-16 h-16 mx-auto text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -220,7 +267,7 @@ const WishlistPage = () => {
             </Show>
 
             {/* Wishlist with Items */}
-            <Show when={wishlist().id !== undefined && wishlistCount() > 0}>
+            <Show when={!isLoading() && wishlistCount() > 0}>
               {/* Wishlist Header */}
               <div class="flex justify-between items-center mb-8">
                 <div>
@@ -302,20 +349,18 @@ const WishlistPage = () => {
                 </For>
               </div>
 
-              {/* Show pending removals - Teacher's submissions pattern */}
-              <Show when={removingFromWishlist.length > 0}>
+              {/* Show pending removals */}
+              <Show when={removingFromWishlist.some(sub => sub.pending)}>
                 <div class="mt-4 p-4 bg-red-50 rounded">
-                  <h4 class="font-bold text-red-800">Removing from wishlist:</h4>
-                  <For each={removingFromWishlist}>
+                  <h4 class="font-bold text-red-800">Removing items...</h4>
+                  <For each={removingFromWishlist.filter(sub => sub.pending)}>
                     {(sub) => (
-                      <Show when={sub.pending}>
-                        <p class="text-red-700">
-                          Dress {(() => {
-                            const dressId = sub.input[0].get('dressId');
-                            return typeof dressId === 'string' ? dressId : 'Unknown';
-                          })()} (pending...)
-                        </p>
-                      </Show>
+                      <p class="text-red-700">
+                        Dress {(() => {
+                          const dressId = sub.input[0].get('dressId');
+                          return typeof dressId === 'string' ? dressId : 'Unknown';
+                        })()} (pending...)
+                      </p>
                     )}
                   </For>
                 </div>
