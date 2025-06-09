@@ -28,7 +28,7 @@ const Header = () => {
     <header class={`fixed top-0 left-0 w-full z-50 transition-all duration-300 ${isScrolled() ? 'bg-white shadow-md py-2' : 'bg-transparent py-4'}`}>
       <div class="max-w-7xl mx-auto px-4 flex items-center">
         <A href="/" class="text-2xl font-bold text-gray-800">
-          DressRental
+          Yllure
         </A>
 
         <div class="flex-1 flex justify-end">
@@ -106,7 +106,7 @@ const Header = () => {
           <div class="px-4 py-4">
             <div class="flex justify-between items-center mb-8">
               <A href="/" class="text-2xl font-bold text-gray-800">
-                DressRental
+                Yllure
               </A>
               <button onClick={toggleMenu} class="text-gray-600">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

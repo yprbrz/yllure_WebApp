@@ -268,7 +268,7 @@ const HomePage = () => {
               Elegance in Every Curve
             </h1>
             <p class="max-w-lg text-lg mb-8 md:mb-12">
-              DressRental offers premium dress rentals for every occasion. 
+              Yllure offers premium dress rentals for every occasion. 
               Experience luxury fashion without commitment.
             </p>
             <A href="/catalog" class="bg-blue-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
@@ -425,10 +425,10 @@ const HomePage = () => {
             <div class="flex flex-col md:flex-row items-center gap-12">
               <div class="w-full md:w-1/2">
                 <h2 class="text-3xl md:text-4xl font-bold mb-6">
-                  About DressRental
+                  About Yllure
                 </h2>
                 <p class="text-gray-700 mb-4">
-                  DressRental was founded with a simple mission: to provide elegant, 
+                  Yllure was founded with a simple mission: to provide elegant, 
                   high-quality dress rentals for every woman and every occasion.
                 </p>
                 <p class="text-gray-700 mb-4">
@@ -467,7 +467,7 @@ const HomePage = () => {
                 <div class="text-yellow-500 text-4xl mb-4">"</div>
                 <p class="text-gray-700 italic mb-6">
                   Finding elegant dresses has always been a challenge. 
-                  DressRental made it easy and affordable. I felt absolutely beautiful at my friend's wedding!
+                  Yllure made it easy and affordable. I felt absolutely beautiful at my friend's wedding!
                 </p>
                 <p class="font-medium">— Sophia T.</p>
               </div>
